@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sqlalchemy import true
 from items import Item
 from typing import List
 from constants import GAME_TICKS_PER_SECOND, MANA_PER_ATK, MAX_TICK_ATK_SPEED
@@ -55,6 +56,7 @@ class Champion:
     def __init__(self, class_name: str, items: List[Item] = [], level: int = 1, channels_ability: bool = False, physical_ability: bool = False):
         attributes = CHAMPIONS_DF[CHAMPIONS_DF.python_name == class_name].iloc[0]
 
+        level_multipliers = {1: 1, 2: 1.8, 3: 3.24} # "common knowledge"
         self.level = level
         self.attributes = attributes
         print(f'attributes: {attributes}')
@@ -65,8 +67,8 @@ class Champion:
         self.base_armor = attributes['armor']
         self.base_crit_chance = attributes['critChance']
         self.base_crit_multiplier = attributes['critMultiplier']
-        self.base_damage = attributes['damage']
-        self.base_hp = attributes['hp']
+        self.base_damage = attributes['damage'] * level_multipliers[level]
+        self.base_hp = attributes['hp'] * level_multipliers[level]
         self.initial_mana = attributes['initialMana']
         self.base_magic_resist = attributes['magicResist']
         self.max_mana = attributes['mana']
@@ -101,10 +103,18 @@ class Champion:
         self.as_multiplier = 1
         self.ap_multiplier = 1
 
+
+        # initialize current offensive stats
         self.current_as = self.base_as
         self.current_ad = self.base_damage
         self.current_crit_chance = self.base_crit_chance
         self.current_crit_multiplier = self.base_crit_multiplier
+        self.current_hp = self.base_hp
+        self.ticks_per_attack = int((1 / self.current_as) * GAME_TICKS_PER_SECOND)
+
+        # initialize current defensive stats
+        self.current_armor = self.base_armor
+        self.current_mr = self.base_magic_resist
 
         for item in items:
             item.apply_equip_effect(self)
@@ -112,12 +122,13 @@ class Champion:
         self.taken_action = False
 
     def get_stats(self):
-        return {'AD': self.current_ad, 
+        return {'AD': round(self.current_ad, 2), 
         'AP': self.ap_multiplier,
         'Attack Speed': round(self.current_as, 2), 
         'Crit Chance': self.current_crit_chance, 
         'Crit Damage Multiplier': round(self.current_crit_multiplier, 2),
-        'Initial Mana': self.current_mana}
+        'Initial Mana': self.current_mana,
+        'HP': self.current_hp}
 
     def get_ability_attr(self, key):
         return self.ability_effect[key][self.level]
@@ -131,8 +142,7 @@ class Champion:
     def add_as(self, bonus_as): 
         self.as_multiplier += bonus_as / 100 # bonus_as is expressed in tens by default
         self.current_as = self.as_multiplier * self.base_as
-
-        # print(f'state: {self.state}, tick_attack_speed: {self.tick_attack_speed}')
+        self.ticks_per_attack = int((1 / self.current_as) * GAME_TICKS_PER_SECOND)
 
     def add_ap(self, bonus_ap):
         self.ap_multiplier += bonus_ap / 100
@@ -152,7 +162,7 @@ class Champion:
         self.casting_tracker = ChannelingAbilityTracker(self.state, max_procs, rate)
         print(f'initialized casting tracker with state {self.state}')
 
-    def action(self):
+    def action(self, defending_champion):
         if self.is_dead:
             return 0
         self.apply_buff()
@@ -161,61 +171,74 @@ class Champion:
             if self.channels_ability:
                 dmg = self.cast_channel_ability()
             else:
-                dmg = self.cast_ability() # TODO: figure out movement and casting abilities.
+                dmg = self.cast_ability(defending_champion) # TODO: figure out movement and casting abilities.
             # if dmg != 0:
             #     return dmg
             # self.move()
             if not self.taken_action:
-                dmg = self.attack()
+                dmg = self.attack(defending_champion)
         self.advance_state()
         return dmg
 
+    def take_damage(self, damage):
+        if self.is_dead:
+            return
+        
+        self.current_hp -= damage['ad'] * (100/(100 + self.current_armor))
+        self.current_hp -= damage['ap'] * (100/(100 + self.current_mr))
+        self.current_hp -= damage['true']
+
+        if self.current_hp <= 0:
+            self.current_hp = 0
+            self.is_dead = True
+
+        
+
     def roll_for_crit(self, damage):
-        if np.random.uniform() < self.crit_chance:
-            return damage * self.crit_multiplier
+        if np.random.uniform() < self.current_crit_chance:
+            self.did_crit = True
+            return damage * self.current_crit_multiplier
+        self.did_crit = False
         return damage
 
-    def attack(self):
-        if self.state - self.last_attack == self.tick_attack_speed:
+    @staticmethod
+    def accumulate_damage(total_damage, new_damage):
+        return {x: total_damage.get(x, 0) + new_damage.get(x, 0) for x in total_damage}
+
+    def attack(self, defending_champion):
+        total_damage = {'ad': 0, 'ap': 0, 'true': 0}
+        if self.state - self.last_attack == self.ticks_per_attack:
             self.last_attack = self.state
-            dmg = self.roll_for_crit(self.damage)
+            total_damage = self.accumulate_damage(total_damage, {'ad': self.roll_for_crit(self.current_ad), 'ap': 0, 'true': 0})
             # print(f'state: {self.state}, mana: {self.current_mana}')
             self.set_mana(self.current_mana + MANA_PER_ATK)
             for item in self.items:
-                item.apply_onhit_effect(self)
-            return dmg
-        return 0
+                total_damage = self.accumulate_damage(total_damage, item.apply_onhit_effect(self, defending_champion))
+        return total_damage
 
     def move(self):
         # implement moving logic if out of range
         return False
 
-    def calculate_total_ability_damage(self):
-        dmg = self.ability_base_damage()
-        if self.ability_can_crit:
-            dmg = self.roll_for_crit(dmg)   
-        dmg += self.ability_bonus_damage()
-        return dmg
-
-    def resolve_ability_item_effects(self):
+    def resolve_ability_item_effects(self, defending_champion):
         if self.physical_ability:
             for item in self.items:
-                item.apply_onhit_effect(self)
+                item.apply_onhit_effect(self, defending_champion)
 
     def resolve_after_ability_effects(self):
         for item in self.items:
             item.apply_after_ability_effect(self)
 
-    def cast_ability(self):
+    def cast_ability(self, defending_champion):
         # 1. calc ability dmg (without bonus). 
         # 2. if AP and JG OR AD, calc crit
         # 3. add bonus damage.
         # 4. 
         if self.current_mana == self.max_mana:
             self.set_mana(0)
-            dmg = self.calculate_total_ability_damage()
+            dmg = self.ability_base_damage()
             self.apply_buff()
-            self.resolve_ability_item_effects()
+            self.resolve_ability_item_effects(defending_champion)
             self.resolve_after_ability_effects()
             self.taken_action = True
             return dmg
@@ -263,6 +286,12 @@ class Champion:
         self.items.pop(item_idx)
 
 
+class Darius(Champion):
+    def __init__(self, items: List[Item] = [], level: int = 1):
+        class_name = self.__class__.__name__
+        super().__init__(class_name, items=items, level=level)
+
+
 class Ziggs(Champion):
     def __init__(self, items: List[Item] = [], level: int = 1):
         class_name = self.__class__.__name__
@@ -297,14 +326,14 @@ class Ezreal(Champion): # todo: implement stacking buff from attack.
         self.stacks = 0
 
     def ability_base_damage(self):
-        return self.ap_multiplier * self.get_ability_attr('PercentAD')
-
-    def ability_bonus_damage(self):
-        return self.get_ability_attr('BonusDamage')
+        physical_damage = self.current_ad * self.get_ability_attr('PercentAD')
+        physical_damage += self.get_ability_attr('BonusDamage')
+        physical_damage = self.roll_for_crit(physical_damage)
+        return {'ad': physical_damage, 'ap': 0, 'true': 0}
 
     def apply_buff(self):
         if self.stacks < self.get_ability_attr('MaxStacks'):
-            self.set_attack_speed(self.attack_speed + self.get_ability_attr('ASBoost'))
+            self.add_as(self.get_ability_attr('ASBoost'))
             self.stacks += 1
 
 

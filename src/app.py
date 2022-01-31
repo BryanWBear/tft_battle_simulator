@@ -1,5 +1,6 @@
 # from champions import Ziggs, Urgot
-from items import Item, GuinsoosRageblade, RabadonsDeathcap, ArchangelsStaff, SpearofShojin, InfinityEdge, JeweledGauntlet, RapidFirecannon
+from champions import Champion
+from items import Item, GuinsoosRageblade, RabadonsDeathcap, ArchangelsStaff, SpearofShojin, InfinityEdge, JeweledGauntlet, RapidFirecannon, LastWhisper
 from itertools import combinations, product
 import numpy as np
 import pandas as pd
@@ -18,27 +19,74 @@ df = get_champions()
 name_to_api_name = {x: y for x, y in zip(df.name, df.apiName)}
 api_name_to_name = {x: y for x, y in zip(df.apiName, df.name)}
 
+st.set_page_config(layout="wide")
+col1, col_space, col2 = st.columns((2.5, 1, 2.5))
 
-st.header('Configure Attacker Parameters')
-champion_name = st.selectbox('Select Attacking Champion', options=df.name)
+# a_expander = col1.expander(label='Configure Attacker Parameters')
+col1.header('Configure Attacker Parameters')
+champion_name = col1.selectbox('Select Attacking Champion', options=df.name)
 champion_info = df[df.name == champion_name].iloc[0]
 
 try:
     champion_class = getattr(champions_module, champion_name)
 except:
-    st.error('Champion is not Implemented')
+    col1.error('Champion is not Implemented')
     champion_class = None
 
-st.image(champion_info.icon)
+col1.image(champion_info.icon)
 stars_dict = {'⭐': 1, '⭐⭐': 2, '⭐⭐⭐': 3}
-num_stars = st.radio('Number of Stars', options=stars_dict)
+num_stars = col1.radio('Attacker Number of Stars', options=stars_dict)
 num_stars = stars_dict[num_stars]
 item_df = get_items()
-items = [GuinsoosRageblade, RabadonsDeathcap, ArchangelsStaff, SpearofShojin, InfinityEdge, JeweledGauntlet, RapidFirecannon]
+items = [GuinsoosRageblade, RabadonsDeathcap, ArchangelsStaff, SpearofShojin, InfinityEdge, JeweledGauntlet, RapidFirecannon, LastWhisper]
 item_dict = {item().name: item for item in items}
-selected_items = st.multiselect('Items to Equip', options=list(item_dict.keys()))
+selected_items = col1.multiselect('Attacker Items to Equip', options=list(item_dict.keys()))
 champion = champion_class(items=[item_dict[item]() for item in selected_items], level=num_stars)
-st.write(champion.get_stats())
+col1.write('Attacker Stats')
+col1.write(champion.get_stats())
+
+col2.header('Configure Defender Parameters')
+
+defending_champion_name = col2.selectbox('Select Defending Champion', options=df.name)
+defending_champion_info = df[df.name == defending_champion_name].iloc[0]
+
+try:
+    defending_champion_class = getattr(champions_module, defending_champion_name)
+except:
+    col2.error('Champion is not Implemented')
+    defending_champion_class = None
+
+col2.image(defending_champion_info.icon)
+defending_stars_dict = {'⭐': 1, '⭐⭐': 2, '⭐⭐⭐': 3}
+defending_num_stars = col2.radio('Defender Number of Stars', options=defending_stars_dict)
+defending_num_stars = defending_stars_dict[defending_num_stars]
+
+defending_selected_items = col2.multiselect('Defender Items to Equip', options=list(item_dict.keys()))
+defending_champion = defending_champion_class(items=[item_dict[item]() for item in selected_items], level=defending_num_stars)
+col2.write('Defender Stats')
+col2.write(defending_champion.get_stats())
+
+st.header('Run Simulation')
+n = st.number_input('Number of Times To Run Simulation', min_value=1, max_value=10000, value=20)
+run_sim = st.button('Run Simulation')
+
+def accumulate_damage(total_damage, new_damage):
+    return {x: total_damage.get(x, 0) + new_damage.get(x, 0) for x in total_damage}
+
+def run_one_simulation(attacking_champion: Champion, defending_champion: Champion):
+    while not defending_champion.is_dead:
+        damage = attacking_champion.action(defending_champion)
+        print(f'damage: {damage}')
+        defending_champion.take_damage(damage)
+    return attacking_champion.state
+
+if run_sim:
+    num_ticks = []
+    for _ in range(n):
+        champion = champion_class(items=[item_dict[item]() for item in selected_items], level=num_stars)
+        defending_champion = defending_champion_class(items=[item_dict[item]() for item in selected_items], level=defending_num_stars)
+        num_ticks.append(run_one_simulation(champion, defending_champion))
+    st.write(num_ticks)
 # num_seconds = st.sidebar.number_input('Number of Seconds To Run Simulation', min_value=1, max_value=30, value=20)
 # item_df = item_df[item_df.name.isin(SET_ITEMS)]
 # st.write(item_df)

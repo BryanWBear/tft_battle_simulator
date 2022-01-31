@@ -56,7 +56,7 @@ class Item:
     def apply_after_equip_effect(self, champion):
         pass
 
-    def apply_onhit_effect(self, champion):
+    def apply_onhit_effect(self, attacking_champion, defending_champion):
         pass
 
     def apply_modify_ability_dmg_effect(self, champion, dmg):
@@ -210,7 +210,22 @@ class LastWhisper(Item): # TODO: need to implement defenders for this to be viab
     def __init__(self):
         class_name = self.__class__.__name__
         super().__init__(class_name)
-        self.components = [ItemComponent.RECURVE_BOW, ItemComponent.SPARRING_GLOVES] 
+        self.components = [ItemComponent.RECURVE_BOW, ItemComponent.SPARRING_GLOVES]
+        self.effect_start = None
+        self.effect_end = None
+
+    def apply_onhit_effect(self, attacking_champion, defending_champion):
+        if attacking_champion.did_crit:
+            self.effect_start = defending_champion.state
+            if not self.effect_start:
+                defending_champion.current_armor *= 0.3
+            self.effect_end = self.effect_start + 500
+        if defending_champion.state == self.effect_end:
+            self.effect_start = None
+            self.effect_end = None
+            defending_champion.current_armor /= 0.3 # return armor back to normal
+
+        return {'ad': 0, 'ap': 0, 'true': 0}
 
 class GiantSlayer(Item): # TODO: need to implement defenders for this to be viable
     def __init__(self):
