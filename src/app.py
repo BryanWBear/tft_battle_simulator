@@ -1,6 +1,6 @@
 # from champions import Ziggs, Urgot
 from champions import Champion
-from items import Item, GuinsoosRageblade, RabadonsDeathcap, ArchangelsStaff, SpearofShojin, InfinityEdge, JeweledGauntlet, RapidFirecannon, LastWhisper
+from items import Item, GuinsoosRageblade, RabadonsDeathcap, ArchangelsStaff, SpearofShojin, InfinityEdge, JeweledGauntlet, RapidFirecannon, LastWhisper, BrambleVest
 from itertools import combinations, product
 import numpy as np
 import pandas as pd
@@ -61,7 +61,10 @@ defending_stars_dict = {'⭐': 1, '⭐⭐': 2, '⭐⭐⭐': 3}
 defending_num_stars = col2.radio('Defender Number of Stars', options=defending_stars_dict)
 defending_num_stars = defending_stars_dict[defending_num_stars]
 
-defending_selected_items = col2.multiselect('Defender Items to Equip', options=list(item_dict.keys()))
+defending_items = [BrambleVest]
+defending_item_dict = {item().name: item for item in defending_items}
+
+defending_selected_items = col2.multiselect('Defender Items to Equip', options=list(defending_item_dict.keys()))
 defending_champion = defending_champion_class(items=[item_dict[item]() for item in selected_items], level=defending_num_stars)
 col2.write('Defender Stats')
 col2.write(defending_champion.get_stats())
@@ -76,7 +79,7 @@ def accumulate_damage(total_damage, new_damage):
 def run_one_simulation(attacking_champion: Champion, defending_champion: Champion):
     while not defending_champion.is_dead:
         damage = attacking_champion.action(defending_champion)
-        print(f'damage: {damage}')
+        # print(f'damage: {damage}')
         defending_champion.take_damage(damage)
     return attacking_champion.state
 

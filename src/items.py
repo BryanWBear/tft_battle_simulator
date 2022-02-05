@@ -27,12 +27,18 @@ class Item:
         item = ITEMS_DF[ITEMS_DF.python_name == class_name].iloc[0]
         # print(f'item: {item}')
         self.effects = item.effects
+        print(self.effects)
+        print('Armor' in self.effects)
         self.as_key = 'AS'
         self.crit_chance_key = 'CritChance'
         self.ap_key = 'AP'
         self.ad_key = 'AD'
         self.mana_key = 'Mana'
+        self.armor_key = 'Armor'
         self.crit_damage_key = var_to_hash('CritDamageAmp')
+        self.health_key = 'Health'
+        self.mr_key = 'MagicResist'
+
 
         self.unique = item['unique']
         self.icon = item['icon']
@@ -52,6 +58,13 @@ class Item:
             champion.add_crit_chance(self.effects[self.crit_chance_key])
         if self.crit_damage_key in self.effects:
             champion.add_crit_damage(self.effects[self.crit_damage_key])
+        if self.armor_key in self.effects:
+            champion.add_armor(self.effects[self.armor_key])
+            print('added armor')
+        if self.health_key in self.effects:
+            champion.add_health(self.effects[self.health_key])
+        if self.mr_key in self.effects:
+            champion.add_mr(self.effects[self.mr_key])
 
     def apply_after_equip_effect(self, champion):
         pass
@@ -216,11 +229,12 @@ class LastWhisper(Item): # TODO: need to implement defenders for this to be viab
 
     def apply_onhit_effect(self, attacking_champion, defending_champion):
         if attacking_champion.did_crit:
-            self.effect_start = defending_champion.state
-            if not self.effect_start:
-                defending_champion.current_armor *= 0.3
+            self.effect_start = attacking_champion.state
+            print(f'lw effect triggered state: {attacking_champion.state}')
+            defending_champion.current_armor *= 0.3
             self.effect_end = self.effect_start + 500
-        if defending_champion.state == self.effect_end:
+        if attacking_champion.state == self.effect_end:
+            print(f'lw effect ended state: {attacking_champion.state}')
             self.effect_start = None
             self.effect_end = None
             defending_champion.current_armor /= 0.3 # return armor back to normal
@@ -279,6 +293,49 @@ class GuardianAngel(Item):
         class_name = self.__class__.__name__
         super().__init__(class_name)  
         self.components = [ItemComponent.CHAIN_VEST, ItemComponent.BF_SWORD]
+
+
+# defensive items 
+
+class BrambleVest(Item): # TODO: implement crit canceling
+    def __init__(self):
+        class_name = self.__class__.__name__
+        super().__init__(class_name)  
+        self.components = [ItemComponent.CHAIN_VEST, ItemComponent.CHAIN_VEST]
+
+class SunfireCape(Item):
+    def __init__(self):
+        class_name = self.__class__.__name__
+        super().__init__(class_name)  
+        self.components = [ItemComponent.CHAIN_VEST, ItemComponent.GIANTS_BELT]
+
+class Zephyr(Item):
+    def __init__(self):
+        class_name = self.__class__.__name__
+        super().__init__(class_name)  
+        self.components = [ItemComponent.NEGATRON_CLOAK, ItemComponent.GIANTS_BELT]
+
+class WarmogsArmor(Item):
+    def __init__(self):
+        class_name = self.__class__.__name__
+        super().__init__(class_name)  
+        self.components = [ItemComponent.GIANTS_BELT, ItemComponent.GIANTS_BELT]
+
+class DragonsClaw(Item):
+    def __init__(self):
+        class_name = self.__class__.__name__
+        super().__init__(class_name)  
+        self.components = [ItemComponent.NEGATRON_CLOAK, ItemComponent.NEGATRON_CLOAK]
+
+class LocketOfTheIronSolari(Item):
+    def __init__(self):
+        class_name = self.__class__.__name__
+        super().__init__(class_name)  
+        self.components = [ItemComponent.CHAIN_VEST, ItemComponent.NEEDLESSLY_LARGE_ROD]
+
+    def apply_equip_effect(self, champion):
+        hp_key = var_to_hash(f'{champion.level}StarShieldValue')
+        champion.add_health(self.effects[hp_key])
         
 if __name__ == "__main__":
     rabs = RabadonsDeathcap()

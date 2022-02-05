@@ -59,7 +59,7 @@ class Champion:
         level_multipliers = {1: 1, 2: 1.8, 3: 3.24} # "common knowledge"
         self.level = level
         self.attributes = attributes
-        print(f'attributes: {attributes}')
+        # print(f'attributes: {attributes}')
         self.ability_effect = parse_ability_effect(self.attributes['ability'])
         # print(f'ability effects: {self.ability_effect}')
 
@@ -128,10 +128,15 @@ class Champion:
         'Crit Chance': self.current_crit_chance, 
         'Crit Damage Multiplier': round(self.current_crit_multiplier, 2),
         'Initial Mana': self.current_mana,
-        'HP': self.current_hp}
+        'HP': self.current_hp,
+        'Armor': self.current_armor,
+        'MR': self.current_mr}
 
     def get_ability_attr(self, key):
         return self.ability_effect[key][self.level]
+
+    def add_armor(self, bonus_armor):
+        self.current_armor += bonus_armor
 
     def add_crit_chance(self, bonus_crit_chance):
         self.current_crit_chance += bonus_crit_chance / 100
@@ -154,6 +159,12 @@ class Champion:
     def add_mana(self, bonus_mana):
         self.current_mana += bonus_mana
         self.current_mana = min(self.current_mana, self.max_mana)
+
+    def add_health(self, bonus_hp):
+        self.current_hp += bonus_hp
+
+    def add_mr(self, bonus_mr):
+        self.current_mr += bonus_mr
 
     def set_mana(self, mana):
         self.current_mana = min(mana, self.max_mana)
@@ -196,6 +207,7 @@ class Champion:
 
     def roll_for_crit(self, damage):
         if np.random.uniform() < self.current_crit_chance:
+            print('champion crits')
             self.did_crit = True
             return damage * self.current_crit_multiplier
         self.did_crit = False
